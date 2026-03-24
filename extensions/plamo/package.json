@@ -1,0 +1,12 @@
+{
+  "name": "@openclaw/plamo-provider",
+  "version": "2026.3.23",
+  "private": true,
+  "description": "OpenClaw PLaMo provider plugin",
+  "type": "module",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

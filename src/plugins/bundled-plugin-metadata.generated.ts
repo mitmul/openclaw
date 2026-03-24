@@ -2639,6 +2639,47 @@ export const GENERATED_BUNDLED_PLUGIN_METADATA = [
     },
   },
   {
+    dirName: "plamo",
+    idHint: "plamo",
+    source: {
+      source: "./index.ts",
+      built: "index.js",
+    },
+    packageName: "@openclaw/plamo-provider",
+    packageVersion: "2026.3.23",
+    packageDescription: "OpenClaw PLaMo provider plugin",
+    packageManifest: {
+      extensions: ["./index.ts"],
+    },
+    manifest: {
+      id: "plamo",
+      configSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {},
+      },
+      providers: ["plamo"],
+      providerAuthEnvVars: {
+        plamo: ["PLAMO_API_KEY"],
+      },
+      providerAuthChoices: [
+        {
+          provider: "plamo",
+          method: "api-key",
+          choiceId: "plamo-api-key",
+          choiceLabel: "PLaMo API key",
+          groupId: "plamo",
+          groupLabel: "PLaMo",
+          groupHint: "API key",
+          optionKey: "plamoApiKey",
+          cliFlag: "--plamo-api-key",
+          cliOption: "--plamo-api-key <key>",
+          cliDescription: "PLaMo API key",
+        },
+      ],
+    },
+  },
+  {
     dirName: "qianfan",
     idHint: "qianfan",
     source: {

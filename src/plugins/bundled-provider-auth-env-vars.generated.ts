@@ -28,6 +28,7 @@ export const BUNDLED_PROVIDER_AUTH_ENV_VAR_CANDIDATES = {
   "opencode-go": ["OPENCODE_API_KEY", "OPENCODE_ZEN_API_KEY"],
   openrouter: ["OPENROUTER_API_KEY"],
   perplexity: ["PERPLEXITY_API_KEY", "OPENROUTER_API_KEY"],
+  plamo: ["PLAMO_API_KEY"],
   qianfan: ["QIANFAN_API_KEY"],
   "qwen-portal": ["QWEN_OAUTH_TOKEN", "QWEN_PORTAL_API_KEY"],
   sglang: ["SGLANG_API_KEY"],

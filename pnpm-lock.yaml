@@ -553,6 +553,8 @@ importers:
 
   extensions/perplexity: {}
 
+  extensions/plamo: {}
+
   extensions/qianfan: {}
 
   extensions/sglang: {}
