@@ -1071,7 +1071,12 @@ export function createPlamoToolCallWrapper(baseStreamFn: StreamFn | undefined): 
           return normalized;
         }
         if (nextPayload && typeof nextPayload === "object" && !Array.isArray(nextPayload)) {
-          dumpPlamoPayload("streaming", nextPayload as Record<string, unknown>);
+          const normalized = finalizePlamoStreamingPayload(
+            nextPayload as Record<string, unknown>,
+            effectiveModel,
+          );
+          dumpPlamoPayload("streaming", normalized);
+          return normalized;
         }
         return nextPayload;
       },
