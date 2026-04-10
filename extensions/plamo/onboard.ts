@@ -1,6 +1,7 @@
 import {
   createModelCatalogPresetAppliers,
   effectivePluginExposesCliBackend,
+  type ProviderOnboardConfigContext,
   type OpenClawConfig,
 } from "openclaw/plugin-sdk/provider-onboard";
 import {
@@ -28,7 +29,10 @@ export function applyPlamoProviderConfig(cfg: OpenClawConfig): OpenClawConfig {
   return plamoPresetAppliers.applyProviderConfig(cfg);
 }
 
-export function applyPlamoConfig(cfg: OpenClawConfig): OpenClawConfig {
+export function applyPlamoConfig(
+  cfg: OpenClawConfig,
+  context?: ProviderOnboardConfigContext,
+): OpenClawConfig {
   const next = plamoPresetAppliers.applyConfig(cfg);
   if (
     next.acp?.backend ||
@@ -36,6 +40,8 @@ export function applyPlamoConfig(cfg: OpenClawConfig): OpenClawConfig {
       cfg: next,
       pluginId: PLAMO_DEFAULT_ACP_BACKEND,
       backendId: PLAMO_DEFAULT_ACP_BACKEND,
+      workspaceDir: context?.workspaceDir,
+      env: context?.env,
     })
   ) {
     return next;

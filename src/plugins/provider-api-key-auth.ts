@@ -11,6 +11,16 @@ import type {
   ProviderPluginWizardSetup,
 } from "./types.js";
 
+type ProviderApplyConfigContext = {
+  workspaceDir?: string;
+  env?: NodeJS.ProcessEnv;
+};
+
+type ProviderApplyConfig = (
+  cfg: OpenClawConfig,
+  context?: ProviderApplyConfigContext,
+) => OpenClawConfig;
+
 type ProviderApiKeyAuthMethodOptions = {
   providerId: string;
   methodId: string;
@@ -29,7 +39,7 @@ type ProviderApiKeyAuthMethodOptions = {
   metadata?: Record<string, string>;
   noteMessage?: string;
   noteTitle?: string;
-  applyConfig?: (cfg: OpenClawConfig) => OpenClawConfig;
+  applyConfig?: ProviderApplyConfig;
 };
 
 const loadProviderApiKeyAuthRuntime = createLazyRuntimeSurface(
@@ -62,7 +72,7 @@ async function applyApiKeyConfig(params: {
   providerId: string;
   profileIds: string[];
   defaultModel?: string;
-  applyConfig?: (cfg: OpenClawConfig) => OpenClawConfig;
+  applyConfig?: ProviderApplyConfig;
 }) {
   const { applyAuthProfileConfig, applyPrimaryModel } = await loadProviderApiKeyAuthRuntime();
   let next = params.ctx.config;
@@ -74,7 +84,10 @@ async function applyApiKeyConfig(params: {
     });
   }
   if (params.applyConfig) {
-    next = params.applyConfig(next);
+    next = params.applyConfig(next, {
+      workspaceDir: params.ctx.workspaceDir,
+      env: process.env,
+    });
   }
   return params.defaultModel ? applyPrimaryModel(next, params.defaultModel) : next;
 }
@@ -144,7 +157,14 @@ export function createProviderApiKeyAuthMethod(
             capturedMode ? { secretInputMode: capturedMode } : undefined,
           ),
         })),
-        ...(params.applyConfig ? { configPatch: params.applyConfig(ctx.config) } : {}),
+        ...(params.applyConfig
+          ? {
+              configPatch: params.applyConfig(ctx.config, {
+                workspaceDir: ctx.workspaceDir,
+                env: ctx.env,
+              }),
+            }
+          : {}),
         ...(params.defaultModel ? { defaultModel: params.defaultModel } : {}),
       };
     },

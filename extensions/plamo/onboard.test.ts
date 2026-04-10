@@ -140,6 +140,41 @@ describe("plamo onboard", () => {
     expect(cfg.acp?.backend).toBeUndefined();
   });
 
+  it("uses workspace-scoped plugin discovery when onboarding receives a workspaceDir", () => {
+    loadPluginManifestRegistry.mockImplementation((params?: { workspaceDir?: string }) => ({
+      plugins:
+        params?.workspaceDir === "/workspace"
+          ? [
+              manifest({
+                id: "acpx",
+                origin: "workspace",
+                enabledByDefault: true,
+                cliBackends: ["acpx"],
+                source: "/workspace/.openclaw/extensions/acpx/index.ts",
+                rootDir: "/workspace/.openclaw/extensions/acpx",
+              }),
+            ]
+          : [],
+      diagnostics: [],
+    }));
+
+    const cfg = {
+      plugins: {
+        entries: {
+          acpx: {
+            enabled: true,
+          },
+        },
+      },
+    };
+
+    const withoutWorkspace = applyPlamoConfig(cfg);
+    const withWorkspace = applyPlamoConfig(cfg, { workspaceDir: "/workspace" });
+
+    expect(withoutWorkspace.acp?.backend).toBeUndefined();
+    expect(withWorkspace.acp?.backend).toBe("acpx");
+  });
+
   it("preserves existing model fallbacks", () => {
     const cfg = applyPlamoConfig(createConfigWithFallbacks());
     expect(resolveAgentModelFallbackValues(cfg.agents?.defaults?.model)).toEqual([

@@ -22,7 +22,7 @@ export default defineSingleProviderPluginEntry({
         envVar: "PLAMO_API_KEY",
         promptMessage: "Enter PLaMo API key",
         defaultModel: PLAMO_DEFAULT_MODEL_REF,
-        applyConfig: (cfg) => applyPlamoConfig(cfg),
+        applyConfig: (cfg, context) => applyPlamoConfig(cfg, context),
         wizard: {
           choiceId: "plamo-api-key",
           choiceLabel: "PLaMo API key",

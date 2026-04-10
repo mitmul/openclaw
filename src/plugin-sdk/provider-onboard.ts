@@ -13,16 +13,16 @@ import type {
   ModelProviderConfig,
 } from "../config/types.models.js";
 import {
-  normalizeOptionalLowercaseString,
-  resolvePrimaryStringValue,
-} from "../shared/string-coerce.js";
-import {
   normalizePluginsConfig,
   resolveEffectivePluginActivationState,
 } from "../plugins/config-state.js";
 import type { PluginManifestRecord } from "../plugins/manifest-registry.js";
 import { loadPluginManifestRegistry } from "../plugins/manifest-registry.js";
 import { isPathInside } from "../plugins/path-safety.js";
+import {
+  normalizeOptionalLowercaseString,
+  resolvePrimaryStringValue,
+} from "../shared/string-coerce.js";
 import { resolveUserPath } from "../utils.js";
 
 export type { OpenClawConfig, ModelApi, ModelDefinitionConfig, ModelProviderConfig };
@@ -48,6 +48,11 @@ export const OPENCODE_ZEN_DEFAULT_MODEL = "opencode/claude-opus-4-6";
 export type ProviderOnboardPresetAppliers<TArgs extends unknown[]> = {
   applyProviderConfig: (cfg: OpenClawConfig, ...args: TArgs) => OpenClawConfig;
   applyConfig: (cfg: OpenClawConfig, ...args: TArgs) => OpenClawConfig;
+};
+
+export type ProviderOnboardConfigContext = {
+  workspaceDir?: string;
+  env?: NodeJS.ProcessEnv;
 };
 
 type PathMatcher = {
@@ -173,6 +178,7 @@ function resolvePluginManifestDuplicateRank(params: {
 export function resolveEffectivePluginManifestRecord(params: {
   cfg: OpenClawConfig;
   pluginId: string;
+  workspaceDir?: string;
   env?: NodeJS.ProcessEnv;
 }): PluginManifestRecord | undefined {
   const normalizedPluginId = normalizeOptionalLowercaseString(params.pluginId);
@@ -183,6 +189,7 @@ export function resolveEffectivePluginManifestRecord(params: {
   const installRules = buildInstallRules(params.cfg, env);
   const candidates = loadPluginManifestRegistry({
     config: params.cfg,
+    workspaceDir: params.workspaceDir,
     env,
     cache: true,
   }).plugins.filter((record) => normalizeOptionalLowercaseString(record.id) === normalizedPluginId);
@@ -211,11 +218,13 @@ export function effectivePluginExposesCliBackend(params: {
   cfg: OpenClawConfig;
   pluginId: string;
   backendId: string;
+  workspaceDir?: string;
   env?: NodeJS.ProcessEnv;
 }): boolean {
   const effectiveRecord = resolveEffectivePluginManifestRecord({
     cfg: params.cfg,
     pluginId: params.pluginId,
+    workspaceDir: params.workspaceDir,
     env: params.env,
   });
   if (!effectiveRecord) {
