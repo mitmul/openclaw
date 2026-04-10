@@ -1,9 +1,10 @@
 // Keep provider onboarding helpers dependency-light so bundled provider plugins
 // do not pull heavyweight runtime graphs at activation time.
 
+import fs from "node:fs";
 import { DEFAULT_PROVIDER } from "../agents/defaults.js";
 import { resolveStaticAllowlistModelKey } from "../agents/model-ref-shared.js";
-import { findNormalizedProviderKey } from "../agents/provider-id.js";
+import { findNormalizedProviderKey, normalizeProviderId } from "../agents/provider-id.js";
 import type { OpenClawConfig } from "../config/config.js";
 import type { AgentModelEntryConfig } from "../config/types.agent-defaults.js";
 import type {
@@ -11,7 +12,18 @@ import type {
   ModelDefinitionConfig,
   ModelProviderConfig,
 } from "../config/types.models.js";
-import { resolvePrimaryStringValue } from "../shared/string-coerce.js";
+import {
+  normalizeOptionalLowercaseString,
+  resolvePrimaryStringValue,
+} from "../shared/string-coerce.js";
+import {
+  normalizePluginsConfig,
+  resolveEffectivePluginActivationState,
+} from "../plugins/config-state.js";
+import type { PluginManifestRecord } from "../plugins/manifest-registry.js";
+import { loadPluginManifestRegistry } from "../plugins/manifest-registry.js";
+import { isPathInside } from "../plugins/path-safety.js";
+import { resolveUserPath } from "../utils.js";
 
 export type { OpenClawConfig, ModelApi, ModelDefinitionConfig, ModelProviderConfig };
 export {
@@ -37,6 +49,193 @@ export type ProviderOnboardPresetAppliers<TArgs extends unknown[]> = {
   applyProviderConfig: (cfg: OpenClawConfig, ...args: TArgs) => OpenClawConfig;
   applyConfig: (cfg: OpenClawConfig, ...args: TArgs) => OpenClawConfig;
 };
+
+type PathMatcher = {
+  exact: Set<string>;
+  dirs: string[];
+};
+
+type InstallTrackingRule = {
+  trackedWithoutPaths: boolean;
+  matcher: PathMatcher;
+};
+
+function createPathMatcher(): PathMatcher {
+  return { exact: new Set<string>(), dirs: [] };
+}
+
+function addPathToMatcher(
+  matcher: PathMatcher,
+  rawPath: string,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const trimmed = rawPath.trim();
+  if (!trimmed) {
+    return;
+  }
+  const resolved = resolveUserPath(trimmed, env);
+  if (!resolved) {
+    return;
+  }
+  if (matcher.exact.has(resolved) || matcher.dirs.includes(resolved)) {
+    return;
+  }
+  let isDirectory = false;
+  try {
+    isDirectory = fs.statSync(resolved).isDirectory();
+  } catch {
+    isDirectory = false;
+  }
+  if (isDirectory) {
+    matcher.dirs.push(resolved);
+    return;
+  }
+  matcher.exact.add(resolved);
+}
+
+function matchesPathMatcher(matcher: PathMatcher, sourcePath: string): boolean {
+  if (matcher.exact.has(sourcePath)) {
+    return true;
+  }
+  return matcher.dirs.some((dirPath) => isPathInside(dirPath, sourcePath));
+}
+
+function buildInstallRules(
+  cfg: OpenClawConfig,
+  env: NodeJS.ProcessEnv,
+): Map<string, InstallTrackingRule> {
+  const installRules = new Map<string, InstallTrackingRule>();
+  const installs = cfg.plugins?.installs ?? {};
+  for (const [pluginId, install] of Object.entries(installs)) {
+    const rule: InstallTrackingRule = {
+      trackedWithoutPaths: false,
+      matcher: createPathMatcher(),
+    };
+    const trackedPaths = [install.installPath, install.sourcePath]
+      .filter((entry): entry is string => typeof entry === "string")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    if (trackedPaths.length === 0) {
+      rule.trackedWithoutPaths = true;
+    } else {
+      for (const trackedPath of trackedPaths) {
+        addPathToMatcher(rule.matcher, trackedPath, env);
+      }
+    }
+    installRules.set(pluginId, rule);
+  }
+  return installRules;
+}
+
+function matchesExplicitInstallRule(params: {
+  pluginId: string;
+  source: string;
+  installRules: Map<string, InstallTrackingRule>;
+  env: NodeJS.ProcessEnv;
+}): boolean {
+  const sourcePath = resolveUserPath(params.source, params.env);
+  const installRule = params.installRules.get(params.pluginId);
+  if (!installRule || installRule.trackedWithoutPaths) {
+    return false;
+  }
+  return matchesPathMatcher(installRule.matcher, sourcePath);
+}
+
+function resolvePluginManifestDuplicateRank(params: {
+  cfg: OpenClawConfig;
+  record: PluginManifestRecord;
+  env: NodeJS.ProcessEnv;
+  installRules: Map<string, InstallTrackingRule>;
+}): number {
+  if (params.record.origin === "config") {
+    return 0;
+  }
+  if (
+    params.record.origin === "global" &&
+    matchesExplicitInstallRule({
+      pluginId: params.record.id,
+      source: params.record.source,
+      installRules: params.installRules,
+      env: params.env,
+    })
+  ) {
+    return 1;
+  }
+  if (params.record.origin === "bundled") {
+    return 2;
+  }
+  if (params.record.origin === "workspace") {
+    return 3;
+  }
+  return 4;
+}
+
+export function resolveEffectivePluginManifestRecord(params: {
+  cfg: OpenClawConfig;
+  pluginId: string;
+  env?: NodeJS.ProcessEnv;
+}): PluginManifestRecord | undefined {
+  const normalizedPluginId = normalizeOptionalLowercaseString(params.pluginId);
+  if (!normalizedPluginId) {
+    return undefined;
+  }
+  const env = params.env ?? process.env;
+  const installRules = buildInstallRules(params.cfg, env);
+  const candidates = loadPluginManifestRegistry({
+    config: params.cfg,
+    env,
+    cache: true,
+  }).plugins.filter((record) => normalizeOptionalLowercaseString(record.id) === normalizedPluginId);
+  if (candidates.length === 0) {
+    return undefined;
+  }
+  return [...candidates].toSorted((left, right) => {
+    return (
+      resolvePluginManifestDuplicateRank({
+        cfg: params.cfg,
+        record: left,
+        env,
+        installRules,
+      }) -
+      resolvePluginManifestDuplicateRank({
+        cfg: params.cfg,
+        record: right,
+        env,
+        installRules,
+      })
+    );
+  })[0];
+}
+
+export function effectivePluginExposesCliBackend(params: {
+  cfg: OpenClawConfig;
+  pluginId: string;
+  backendId: string;
+  env?: NodeJS.ProcessEnv;
+}): boolean {
+  const effectiveRecord = resolveEffectivePluginManifestRecord({
+    cfg: params.cfg,
+    pluginId: params.pluginId,
+    env: params.env,
+  });
+  if (!effectiveRecord) {
+    return false;
+  }
+  const activationState = resolveEffectivePluginActivationState({
+    id: effectiveRecord.id,
+    origin: effectiveRecord.origin,
+    config: normalizePluginsConfig(params.cfg.plugins),
+    rootConfig: params.cfg,
+    enabledByDefault: effectiveRecord.enabledByDefault,
+  });
+  if (!activationState.activated) {
+    return false;
+  }
+  const normalizedBackendId = normalizeProviderId(params.backendId);
+  return effectiveRecord.cliBackends.some(
+    (backendId) => normalizeProviderId(backendId) === normalizedBackendId,
+  );
+}
 
 function extractAgentDefaultModelFallbacks(model: unknown): string[] | undefined {
   if (!model || typeof model !== "object") {
