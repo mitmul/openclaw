@@ -994,4 +994,47 @@ describe("plamo provider plugin", () => {
       ],
     });
   });
+
+  it("keeps existing toolCall blocks and adds extra inline-only tool calls", () => {
+    const inlineToolMarkup =
+      "<|plamo:begin_tool_request:plamo|>" +
+      "<|plamo:begin_tool_name:plamo|>write<|plamo:end_tool_name:plamo|>" +
+      '<|plamo:begin_tool_arguments:plamo|><|plamo:msg|>{"path":"notes.txt","content":"ok"}' +
+      "<|plamo:end_tool_arguments:plamo|>" +
+      "<|plamo:end_tool_request:plamo|>";
+
+    const message = {
+      role: "assistant",
+      stopReason: "stop",
+      content: [
+        { type: "text", text: `Checking...${inlineToolMarkup}` },
+        {
+          type: "toolCall",
+          id: "existing_call",
+          name: "read",
+          arguments: { path: "README.md" },
+        },
+      ],
+    };
+
+    normalizePlamoToolMarkupInMessage(message);
+
+    expect(message).toMatchObject({
+      stopReason: "toolUse",
+      content: [
+        { type: "text", text: "Checking..." },
+        {
+          type: "toolCall",
+          id: "existing_call",
+          name: "read",
+          arguments: { path: "README.md" },
+        },
+        {
+          type: "toolCall",
+          name: "write",
+          arguments: { path: "notes.txt", content: "ok" },
+        },
+      ],
+    });
+  });
 });

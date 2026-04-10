@@ -274,6 +274,33 @@ function hasToolCallBlock(content: unknown[]): boolean {
   });
 }
 
+function createToolCallSignature(name: string, args: Record<string, unknown>): string {
+  return JSON.stringify({
+    name,
+    arguments: args,
+  });
+}
+
+function resolveExistingToolCallSignatureCounts(content: unknown[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const block of content) {
+    if (!block || typeof block !== "object") {
+      continue;
+    }
+    if ((block as { type?: unknown }).type !== "toolCall") {
+      continue;
+    }
+    const name = (block as { name?: unknown }).name;
+    const args = (block as { arguments?: unknown }).arguments;
+    if (typeof name !== "string" || !args || typeof args !== "object" || Array.isArray(args)) {
+      continue;
+    }
+    const signature = createToolCallSignature(name, args as Record<string, unknown>);
+    counts.set(signature, (counts.get(signature) ?? 0) + 1);
+  }
+  return counts;
+}
+
 function resolvePlamoCompat(model: RuntimeModel): ResolvedPlamoCompat {
   const compat = (model as { compat?: OpenAICompletionsCompat }).compat;
   return {
@@ -941,7 +968,18 @@ export function normalizePlamoToolMarkupInMessage(message: unknown): void {
   }
 
   const cleanedText = stripPlamoToolMarkup(combinedText);
-  const synthesizedToolCalls = hasToolCallBlock(content) ? [] : parsePlamoToolCalls(combinedText);
+  const existingToolCallCounts = hasToolCallBlock(content)
+    ? resolveExistingToolCallSignatureCounts(content)
+    : new Map<string, number>();
+  const synthesizedToolCalls = parsePlamoToolCalls(combinedText).filter((toolCall) => {
+    const signature = createToolCallSignature(toolCall.name, toolCall.arguments);
+    const existingCount = existingToolCallCounts.get(signature) ?? 0;
+    if (existingCount <= 0) {
+      return true;
+    }
+    existingToolCallCounts.set(signature, existingCount - 1);
+    return false;
+  });
 
   const nextContent: unknown[] = [];
   let injectedText = false;
