@@ -276,11 +276,29 @@ function hasToolCallBlock(content: unknown[]): boolean {
   });
 }
 
+function normalizeToolCallSignatureValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeToolCallSignatureValue(entry));
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  const normalized: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>).toSorted(
+    ([a], [b]) => a.localeCompare(b),
+  )) {
+    normalized[key] = normalizeToolCallSignatureValue(entry);
+  }
+  return normalized;
+}
+
 function createToolCallSignature(name: string, args: Record<string, unknown>): string {
-  return JSON.stringify({
-    name,
-    arguments: args,
-  });
+  return JSON.stringify(
+    normalizeToolCallSignatureValue({
+      name,
+      arguments: args,
+    }),
+  );
 }
 
 function resolveExistingToolCallSignatureCounts(content: unknown[]): Map<string, number> {
@@ -674,6 +692,7 @@ function createNativePlamoStream(
   void (async () => {
     let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
     let releaseResponse: (() => Promise<void>) | null = null;
+    let sawFinishReason = false;
     try {
       const payload = await resolvePlamoStreamingPayload(model, context, options);
       dumpPlamoPayload("streaming", payload);
@@ -762,7 +781,8 @@ function createNativePlamoStream(
         if (!chunk.usage && choice.usage) {
           output.usage = parseUsage(choice.usage, model);
         }
-        if (choice.finish_reason) {
+        if (choice.finish_reason !== undefined && choice.finish_reason !== null) {
+          sawFinishReason = true;
           const finishReasonResult = mapStopReason(choice.finish_reason);
           output.stopReason = finishReasonResult.stopReason;
           if (finishReasonResult.errorMessage) {
@@ -894,6 +914,9 @@ function createNativePlamoStream(
       }
       if (output.stopReason === "error") {
         throw new Error(output.errorMessage || "Provider returned an error stop reason");
+      }
+      if (!sawFinishReason) {
+        throw new Error("PLaMo stream ended before a finish_reason was received");
       }
 
       stream.push({ type: "done", reason: output.stopReason, message: output });
@@ -1042,6 +1065,7 @@ function syncDoneEventReasonWithMessageStopReason(event: unknown): void {
 
 function wrapStreamNormalizePlamoToolMarkup(
   stream: ReturnType<typeof streamSimple>,
+  options?: { normalizePartial?: boolean },
 ): ReturnType<typeof streamSimple> {
   const originalResult = stream.result.bind(stream);
   stream.result = async () => {
@@ -1059,7 +1083,9 @@ function wrapStreamNormalizePlamoToolMarkup(
           const result = await iterator.next();
           if (!result.done && result.value && typeof result.value === "object") {
             const event = result.value as { partial?: unknown; message?: unknown };
-            normalizePlamoToolMarkupInMessage(event.partial);
+            if (options?.normalizePartial !== false) {
+              normalizePlamoToolMarkupInMessage(event.partial);
+            }
             normalizePlamoToolMarkupInMessage(event.message);
             syncDoneEventReasonWithMessageStopReason(event);
           }
@@ -1085,6 +1111,7 @@ export function createPlamoToolCallWrapper(baseStreamFn: StreamFn | undefined): 
     if (underlying === streamSimple) {
       return wrapStreamNormalizePlamoToolMarkup(
         createNativePlamoStream(model, sanitizedContext, options),
+        { normalizePartial: false },
       );
     }
 

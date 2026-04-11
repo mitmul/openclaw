@@ -1,11 +1,17 @@
 import { once } from "node:events";
 import { createServer } from "node:http";
 import { streamSimple } from "@mariozechner/pi-ai";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveProviderPluginChoice } from "../../src/plugins/provider-wizard.js";
 import { registerSingleProviderPlugin } from "../../test/helpers/plugins/plugin-registration.js";
 import plamoPlugin from "./index.js";
 import { normalizePlamoToolMarkupInMessage } from "./stream.js";
+
+const fetchWithSsrFGuardMock = vi.hoisted(() => vi.fn());
+
+vi.mock("openclaw/plugin-sdk/ssrf-runtime", () => ({
+  fetchWithSsrFGuard: (params: unknown) => fetchWithSsrFGuardMock(params),
+}));
 
 type FakeWrappedStream = {
   result: () => Promise<unknown>;
@@ -68,6 +74,20 @@ function createWrappedPlamoStream(
   }
   return wrapped;
 }
+
+beforeEach(() => {
+  fetchWithSsrFGuardMock.mockReset();
+  fetchWithSsrFGuardMock.mockImplementation(async (paramsUnknown: unknown) => {
+    const params = paramsUnknown as {
+      url: string;
+      init?: RequestInit;
+    };
+    return {
+      response: await fetch(params.url, params.init),
+      release: async () => {},
+    };
+  });
+});
 
 describe("plamo provider plugin", () => {
   it("registers PLaMo with api-key auth wizard metadata", async () => {
@@ -690,6 +710,67 @@ describe("plamo provider plugin", () => {
     });
   });
 
+  it("treats native SSE EOF without finish_reason as an error", async () => {
+    const { provider, catalog } = await loadPlamoCatalog();
+
+    const server = createServer((req, res) => {
+      req.resume();
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.write(
+        `data: ${JSON.stringify({
+          id: "chatcmpl-stream-truncated",
+          choices: [{ index: 0, delta: { content: "partial" } }],
+        })}\n\n`,
+      );
+      res.end("data: [DONE]\n\n");
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      server.close();
+      throw new Error("expected tcp server address");
+    }
+
+    const [model] = catalog.provider.models;
+    const wrapped = createWrappedPlamoStream(provider);
+    const stream = await wrapped(
+      {
+        ...model,
+        provider: "plamo",
+        api: "openai-completions",
+        baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      } as never,
+      {
+        systemPrompt: "system prompt",
+        messages: [{ role: "user", content: "こんにちは" }],
+      } as never,
+      {
+        apiKey: "test-key",
+      } as never,
+    );
+
+    const events: unknown[] = [];
+    try {
+      for await (const event of stream) {
+        events.push(event);
+      }
+    } finally {
+      server.close();
+    }
+
+    expect(events.some((event) => (event as { type?: unknown }).type === "done")).toBe(false);
+    expect(events.at(-1)).toMatchObject({
+      type: "error",
+      reason: "error",
+      error: expect.objectContaining({
+        stopReason: "error",
+        errorMessage: expect.stringContaining("finish_reason"),
+      }),
+    });
+  });
+
   it("normalizes inline PLaMo tool markup in native stream results without synthetic toolcall events", async () => {
     const { provider, catalog } = await loadPlamoCatalog();
     const toolMarkup =
@@ -766,6 +847,94 @@ describe("plamo provider plugin", () => {
         {
           type: "text",
           text: "I will inspect the file.",
+        },
+        {
+          type: "toolCall",
+          name: "read",
+          arguments: { path: "README.md" },
+        },
+      ],
+    });
+  });
+
+  it("preserves later native text deltas after inline tool markup closes mid-stream", async () => {
+    const { provider, catalog } = await loadPlamoCatalog();
+    const toolMarkup =
+      "<|plamo:begin_tool_requests:plamo|>" +
+      "<|plamo:begin_tool_request:plamo|>" +
+      "<|plamo:begin_tool_name:plamo|>read<|plamo:end_tool_name:plamo|>" +
+      '<|plamo:begin_tool_arguments:plamo|><|plamo:msg|>{"path":"README.md"}' +
+      "<|plamo:end_tool_arguments:plamo|>" +
+      "<|plamo:end_tool_request:plamo|>" +
+      "<|plamo:end_tool_requests:plamo|>";
+
+    const server = createServer((req, res) => {
+      req.resume();
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.write(
+        `data: ${JSON.stringify({
+          id: "chatcmpl-tool-midstream",
+          choices: [{ index: 0, delta: { content: `Checking...${toolMarkup}` } }],
+        })}\n\n`,
+      );
+      res.write(
+        `data: ${JSON.stringify({
+          id: "chatcmpl-tool-midstream",
+          choices: [{ index: 0, delta: { content: " Done." } }],
+        })}\n\n`,
+      );
+      res.write(
+        `data: ${JSON.stringify({
+          id: "chatcmpl-tool-midstream",
+          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+          usage: { prompt_tokens: 1, completion_tokens: 3, total_tokens: 4 },
+        })}\n\n`,
+      );
+      res.end("data: [DONE]\n\n");
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      server.close();
+      throw new Error("expected tcp server address");
+    }
+
+    const [model] = catalog.provider.models;
+    const wrapped = createWrappedPlamoStream(provider);
+    const stream = await wrapped(
+      {
+        ...model,
+        provider: "plamo",
+        api: "openai-completions",
+        baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      } as never,
+      {
+        systemPrompt: "system prompt",
+        messages: [{ role: "user", content: "こんにちは" }],
+      } as never,
+      {
+        apiKey: "test-key",
+      } as never,
+    );
+
+    let result: Awaited<ReturnType<typeof stream.result>> | undefined;
+    try {
+      for await (const _event of stream) {
+        // Drain the stream so the final message is assembled.
+      }
+      result = await stream.result();
+    } finally {
+      server.close();
+    }
+
+    expect(result).toMatchObject({
+      stopReason: "toolUse",
+      content: [
+        {
+          type: "text",
+          text: "Checking... Done.",
         },
         {
           type: "toolCall",
@@ -1031,6 +1200,44 @@ describe("plamo provider plugin", () => {
         },
         {
           type: "toolCall",
+          name: "write",
+          arguments: { path: "notes.txt", content: "ok" },
+        },
+      ],
+    });
+  });
+
+  it("deduplicates inline tool calls even when argument key order differs", () => {
+    const inlineToolMarkup =
+      "<|plamo:begin_tool_request:plamo|>" +
+      "<|plamo:begin_tool_name:plamo|>write<|plamo:end_tool_name:plamo|>" +
+      '<|plamo:begin_tool_arguments:plamo|><|plamo:msg|>{"content":"ok","path":"notes.txt"}' +
+      "<|plamo:end_tool_arguments:plamo|>" +
+      "<|plamo:end_tool_request:plamo|>";
+
+    const message = {
+      role: "assistant",
+      stopReason: "stop",
+      content: [
+        { type: "text", text: `Checking...${inlineToolMarkup}` },
+        {
+          type: "toolCall",
+          id: "existing_call",
+          name: "write",
+          arguments: { path: "notes.txt", content: "ok" },
+        },
+      ],
+    };
+
+    normalizePlamoToolMarkupInMessage(message);
+
+    expect(message).toMatchObject({
+      stopReason: "stop",
+      content: [
+        { type: "text", text: "Checking..." },
+        {
+          type: "toolCall",
+          id: "existing_call",
           name: "write",
           arguments: { path: "notes.txt", content: "ok" },
         },
