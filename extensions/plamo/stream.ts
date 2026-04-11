@@ -356,7 +356,7 @@ function convertTools(tools: Tool[], compat: ResolvedPlamoCompat): Array<Record<
       name: tool.name,
       description: tool.description,
       parameters: tool.parameters,
-      ...(compat.supportsStrictMode !== false && { strict: false }),
+      ...(compat.supportsStrictMode ? { strict: false } : {}),
     },
   }));
 }
@@ -535,6 +535,31 @@ function parseUsage(rawUsage: OpenAIStyleUsage | null | undefined, model: Runtim
   return usage;
 }
 
+function formatFinishReason(reason: unknown): string {
+  if (
+    typeof reason === "string" ||
+    typeof reason === "number" ||
+    typeof reason === "boolean" ||
+    typeof reason === "bigint"
+  ) {
+    return String(reason);
+  }
+  if (typeof reason === "symbol") {
+    return reason.toString();
+  }
+  if (reason === null) {
+    return "null";
+  }
+  if (reason === undefined) {
+    return "undefined";
+  }
+  try {
+    return JSON.stringify(reason) ?? Object.prototype.toString.call(reason);
+  } catch {
+    return Object.prototype.toString.call(reason);
+  }
+}
+
 function mapStopReason(reason: unknown): { stopReason: StopReason; errorMessage?: string } {
   if (reason === null || reason === undefined) {
     return { stopReason: "stop" };
@@ -555,9 +580,13 @@ function mapStopReason(reason: unknown): { stopReason: StopReason; errorMessage?
     default:
       return {
         stopReason: "error",
-        errorMessage: `Provider finish_reason: ${String(reason)}`,
+        errorMessage: `Provider finish_reason: ${formatFinishReason(reason)}`,
       };
   }
+}
+
+function isOpenAIStyleChunkDelta(value: unknown): value is OpenAIStyleChunkDelta {
+  return !!value && typeof value === "object";
 }
 
 function buildErrorAssistantMessage(
@@ -790,11 +819,8 @@ function createNativePlamoStream(
           }
         }
 
-        const delta =
-          choice.delta && typeof choice.delta === "object"
-            ? (choice.delta as OpenAIStyleChunkDelta)
-            : null;
-        if (!delta) {
+        const delta = choice.delta;
+        if (!isOpenAIStyleChunkDelta(delta)) {
           continue;
         }
 
