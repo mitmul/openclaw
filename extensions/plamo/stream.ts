@@ -16,6 +16,7 @@ import {
   type Usage,
 } from "@mariozechner/pi-ai";
 import { convertMessages } from "@mariozechner/pi-ai/openai-completions";
+import { fetchWithSsrFGuard } from "openclaw/plugin-sdk/ssrf-runtime";
 
 const PLAMO_BEGIN_TOOL_REQUEST = "<|plamo:begin_tool_request:plamo|>";
 const PLAMO_END_TOOL_REQUEST = "<|plamo:end_tool_request:plamo|>";
@@ -306,7 +307,7 @@ function resolvePlamoCompat(model: RuntimeModel): ResolvedPlamoCompat {
   const compat = (model as { compat?: OpenAICompletionsCompat }).compat;
   return {
     ...DEFAULT_PLAMO_COMPAT,
-    ...(compat ?? {}),
+    ...compat,
     reasoningEffortMap: compat?.reasoningEffortMap ?? DEFAULT_PLAMO_COMPAT.reasoningEffortMap,
     openRouterRouting: compat?.openRouterRouting ?? DEFAULT_PLAMO_COMPAT.openRouterRouting,
     vercelGatewayRouting: compat?.vercelGatewayRouting ?? DEFAULT_PLAMO_COMPAT.vercelGatewayRouting,
@@ -454,8 +455,8 @@ function buildRequestHeaders(
     Authorization: `Bearer ${apiKey}`,
     Accept: "text/event-stream",
     "Content-Type": "application/json",
-    ...((model as { headers?: Record<string, string> }).headers ?? {}),
-    ...(options?.headers ?? {}),
+    ...(model as { headers?: Record<string, string> }).headers,
+    ...options?.headers,
   };
 }
 
@@ -639,7 +640,7 @@ function parseStreamingChunk(raw: string): OpenAIStyleChunk | null {
     return JSON.parse(trimmed) as OpenAIStyleChunk;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Invalid PLaMo stream chunk: ${message}`);
+    throw new Error(`Invalid PLaMo stream chunk: ${message}`, { cause: error });
   }
 }
 
@@ -672,16 +673,23 @@ function createNativePlamoStream(
 
   void (async () => {
     let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+    let releaseResponse: (() => Promise<void>) | null = null;
     try {
       const payload = await resolvePlamoStreamingPayload(model, context, options);
       dumpPlamoPayload("streaming", payload);
       const apiKey = resolvePlamoApiKey(model, options);
-      const response = await fetch(buildChatCompletionsUrl(model.baseUrl), {
-        method: "POST",
-        headers: buildRequestHeaders(model, apiKey, options),
-        body: JSON.stringify(payload),
-        signal: options?.signal,
+      const guardedFetch = await fetchWithSsrFGuard({
+        url: buildChatCompletionsUrl(model.baseUrl),
+        init: {
+          method: "POST",
+          headers: buildRequestHeaders(model, apiKey, options),
+          body: JSON.stringify(payload),
+          signal: options?.signal,
+        },
+        auditContext: "plamo-stream",
       });
+      const response = guardedFetch.response;
+      releaseResponse = guardedFetch.release;
 
       if (!response.ok) {
         throw new Error(
@@ -906,6 +914,7 @@ function createNativePlamoStream(
       } catch {
         // ignore reader cleanup failures
       }
+      await releaseResponse?.().catch(() => undefined);
     }
   })();
 
