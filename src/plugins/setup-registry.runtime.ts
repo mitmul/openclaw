@@ -4,12 +4,19 @@ import { loadPluginManifestRegistry } from "./manifest-registry.js";
 
 type SetupRegistryRuntimeModule = Pick<
   typeof import("./setup-registry.js"),
-  "resolvePluginSetupCliBackend"
+  "resolvePluginSetupCliBackend" | "resolvePluginSetupService"
 >;
 
 type SetupCliBackendRuntimeEntry = {
   pluginId: string;
   backend: {
+    id: string;
+  };
+};
+
+type SetupServiceRuntimeEntry = {
+  pluginId: string;
+  service: {
     id: string;
   };
 };
@@ -65,4 +72,26 @@ export function resolvePluginSetupCliBackendRuntime(params: { backend: string })
   return resolveBundledSetupCliBackends().find(
     (entry) => normalizeProviderId(entry.backend.id) === normalized,
   );
+}
+
+export function resolvePluginSetupServiceRuntime(params: {
+  pluginId: string;
+  serviceId: string;
+  workspaceDir?: string;
+  env?: NodeJS.ProcessEnv;
+}): SetupServiceRuntimeEntry | undefined {
+  const runtime = loadSetupRegistryRuntime();
+  if (!runtime) {
+    return undefined;
+  }
+  const resolved = runtime.resolvePluginSetupService(params);
+  if (!resolved) {
+    return undefined;
+  }
+  return {
+    pluginId: resolved.pluginId,
+    service: {
+      id: resolved.service.id,
+    },
+  };
 }

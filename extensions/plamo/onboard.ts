@@ -1,6 +1,6 @@
 import {
   createModelCatalogPresetAppliers,
-  effectivePluginExposesCliBackend,
+  effectivePluginRegistersService,
   type ProviderOnboardConfigContext,
   type OpenClawConfig,
 } from "openclaw/plugin-sdk/provider-onboard";
@@ -13,6 +13,7 @@ import {
 export { PLAMO_DEFAULT_MODEL_REF };
 
 const PLAMO_DEFAULT_ACP_BACKEND = "acpx";
+const PLAMO_DEFAULT_ACP_RUNTIME_SERVICE = "acpx-runtime";
 
 const plamoPresetAppliers = createModelCatalogPresetAppliers({
   primaryModelRef: PLAMO_DEFAULT_MODEL_REF,
@@ -36,10 +37,10 @@ export function applyPlamoConfig(
   const next = plamoPresetAppliers.applyConfig(cfg);
   if (
     next.acp?.backend ||
-    !effectivePluginExposesCliBackend({
+    !effectivePluginRegistersService({
       cfg: next,
       pluginId: PLAMO_DEFAULT_ACP_BACKEND,
-      backendId: PLAMO_DEFAULT_ACP_BACKEND,
+      serviceId: PLAMO_DEFAULT_ACP_RUNTIME_SERVICE,
       workspaceDir: context?.workspaceDir,
       env: context?.env,
     })

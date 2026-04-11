@@ -9,12 +9,21 @@ import {
 } from "../../test/helpers/plugins/onboard-config.js";
 
 const loadPluginManifestRegistry = vi.hoisted(() => vi.fn());
+const resolvePluginSetupServiceRuntime = vi.hoisted(() => vi.fn());
 
 vi.mock("../../src/plugins/manifest-registry.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/plugins/manifest-registry.js")>();
   return {
     ...actual,
     loadPluginManifestRegistry,
+  };
+});
+
+vi.mock("../../src/plugins/setup-registry.runtime.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/plugins/setup-registry.runtime.js")>();
+  return {
+    ...actual,
+    resolvePluginSetupServiceRuntime,
   };
 });
 
@@ -46,10 +55,12 @@ function manifest(params: {
 describe("plamo onboard", () => {
   beforeEach(() => {
     loadPluginManifestRegistry.mockReset();
+    resolvePluginSetupServiceRuntime.mockReset();
     loadPluginManifestRegistry.mockReturnValue({
       plugins: [],
       diagnostics: [],
     });
+    resolvePluginSetupServiceRuntime.mockReturnValue(undefined);
   });
 
   it("adds the PLaMo provider in provider-only mode without changing the primary model", () => {
@@ -74,10 +85,13 @@ describe("plamo onboard", () => {
         manifest({
           id: "acpx",
           enabledByDefault: true,
-          cliBackends: ["acpx"],
         }),
       ],
       diagnostics: [],
+    });
+    resolvePluginSetupServiceRuntime.mockReturnValue({
+      pluginId: "acpx",
+      service: { id: "acpx-runtime" },
     });
 
     const cfg = applyPlamoConfig({});
@@ -93,14 +107,12 @@ describe("plamo onboard", () => {
         manifest({
           id: "acpx",
           origin: "config",
-          cliBackends: [],
           source: "/overrides/acpx/index.ts",
           rootDir: "/overrides/acpx",
         }),
         manifest({
           id: "acpx",
           enabledByDefault: true,
-          cliBackends: ["acpx"],
           source: "/bundled/acpx/index.ts",
           rootDir: "/bundled/acpx",
         }),
@@ -121,10 +133,13 @@ describe("plamo onboard", () => {
         manifest({
           id: "acpx",
           enabledByDefault: true,
-          cliBackends: ["acpx"],
         }),
       ],
       diagnostics: [],
+    });
+    resolvePluginSetupServiceRuntime.mockReturnValue({
+      pluginId: "acpx",
+      service: { id: "acpx-runtime" },
     });
 
     const cfg = applyPlamoConfig({
@@ -149,7 +164,6 @@ describe("plamo onboard", () => {
                 id: "acpx",
                 origin: "workspace",
                 enabledByDefault: true,
-                cliBackends: ["acpx"],
                 source: "/workspace/.openclaw/extensions/acpx/index.ts",
                 rootDir: "/workspace/.openclaw/extensions/acpx",
               }),
@@ -157,6 +171,14 @@ describe("plamo onboard", () => {
           : [],
       diagnostics: [],
     }));
+    resolvePluginSetupServiceRuntime.mockImplementation(
+      (params?: { workspaceDir?: string; pluginId?: string; serviceId?: string }) =>
+        params?.workspaceDir === "/workspace" &&
+        params.pluginId === "acpx" &&
+        params.serviceId === "acpx-runtime"
+          ? { pluginId: "acpx", service: { id: "acpx-runtime" } }
+          : undefined,
+    );
 
     const cfg = {
       plugins: {

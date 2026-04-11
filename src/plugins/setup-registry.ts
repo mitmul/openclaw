@@ -13,6 +13,7 @@ import type { PluginRuntime } from "./runtime/types.js";
 import type {
   CliBackendPlugin,
   OpenClawPluginModule,
+  OpenClawPluginService,
   PluginConfigMigration,
   PluginLogger,
   PluginSetupAutoEnableProbe,
@@ -35,6 +36,11 @@ type SetupCliBackendEntry = {
   backend: CliBackendPlugin;
 };
 
+type SetupServiceEntry = {
+  pluginId: string;
+  service: OpenClawPluginService;
+};
+
 type SetupConfigMigrationEntry = {
   pluginId: string;
   migrate: PluginConfigMigration;
@@ -48,6 +54,7 @@ type SetupAutoEnableProbeEntry = {
 type PluginSetupRegistry = {
   providers: SetupProviderEntry[];
   cliBackends: SetupCliBackendEntry[];
+  services: SetupServiceEntry[];
   configMigrations: SetupConfigMigrationEntry[];
   autoEnableProbes: SetupAutoEnableProbeEntry[];
 };
@@ -239,6 +246,7 @@ export function resolvePluginSetupRegistry(params?: {
     const empty = {
       providers: [],
       cliBackends: [],
+      services: [],
       configMigrations: [],
       autoEnableProbes: [],
     } satisfies PluginSetupRegistry;
@@ -248,10 +256,12 @@ export function resolvePluginSetupRegistry(params?: {
 
   const providers: SetupProviderEntry[] = [];
   const cliBackends: SetupCliBackendEntry[] = [];
+  const services: SetupServiceEntry[] = [];
   const configMigrations: SetupConfigMigrationEntry[] = [];
   const autoEnableProbes: SetupAutoEnableProbeEntry[] = [];
   const providerKeys = new Set<string>();
   const cliBackendKeys = new Set<string>();
+  const serviceKeys = new Set<string>();
 
   const discovery = discoverOpenClawPlugins({
     workspaceDir: params?.workspaceDir,
@@ -325,6 +335,21 @@ export function resolvePluginSetupRegistry(params?: {
             backend,
           });
         },
+        registerService(service) {
+          const id = service.id.trim();
+          if (!id) {
+            return;
+          }
+          const key = `${record.id}:${id}`;
+          if (serviceKeys.has(key)) {
+            return;
+          }
+          serviceKeys.add(key);
+          services.push({
+            pluginId: record.id,
+            service,
+          });
+        },
         registerConfigMigration(migrate) {
           configMigrations.push({
             pluginId: record.id,
@@ -353,6 +378,7 @@ export function resolvePluginSetupRegistry(params?: {
   const registry = {
     providers,
     cliBackends,
+    services,
     configMigrations,
     autoEnableProbes,
   } satisfies PluginSetupRegistry;
@@ -553,6 +579,26 @@ export function resolvePluginSetupCliBackend(params: {
   }
 
   return matchedBackend ? { pluginId: record.id, backend: matchedBackend } : undefined;
+}
+
+export function resolvePluginSetupService(params: {
+  pluginId: string;
+  serviceId: string;
+  workspaceDir?: string;
+  env?: NodeJS.ProcessEnv;
+}): SetupServiceEntry | undefined {
+  const normalizedPluginId = params.pluginId.trim();
+  const normalizedServiceId = params.serviceId.trim();
+  if (!normalizedPluginId || !normalizedServiceId) {
+    return undefined;
+  }
+  return resolvePluginSetupRegistry({
+    workspaceDir: params.workspaceDir,
+    env: params.env,
+    pluginIds: [normalizedPluginId],
+  }).services.find(
+    (entry) => entry.pluginId === normalizedPluginId && entry.service.id === normalizedServiceId,
+  );
 }
 
 export function runPluginSetupConfigMigrations(params: {

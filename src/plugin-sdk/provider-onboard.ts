@@ -19,6 +19,7 @@ import {
 import type { PluginManifestRecord } from "../plugins/manifest-registry.js";
 import { loadPluginManifestRegistry } from "../plugins/manifest-registry.js";
 import { isPathInside } from "../plugins/path-safety.js";
+import { resolvePluginSetupServiceRuntime } from "../plugins/setup-registry.runtime.js";
 import {
   normalizeOptionalLowercaseString,
   resolvePrimaryStringValue,
@@ -243,6 +244,42 @@ export function effectivePluginExposesCliBackend(params: {
   const normalizedBackendId = normalizeProviderId(params.backendId);
   return effectiveRecord.cliBackends.some(
     (backendId) => normalizeProviderId(backendId) === normalizedBackendId,
+  );
+}
+
+export function effectivePluginRegistersService(params: {
+  cfg: OpenClawConfig;
+  pluginId: string;
+  serviceId: string;
+  workspaceDir?: string;
+  env?: NodeJS.ProcessEnv;
+}): boolean {
+  const effectiveRecord = resolveEffectivePluginManifestRecord({
+    cfg: params.cfg,
+    pluginId: params.pluginId,
+    workspaceDir: params.workspaceDir,
+    env: params.env,
+  });
+  if (!effectiveRecord) {
+    return false;
+  }
+  const activationState = resolveEffectivePluginActivationState({
+    id: effectiveRecord.id,
+    origin: effectiveRecord.origin,
+    config: normalizePluginsConfig(params.cfg.plugins),
+    rootConfig: params.cfg,
+    enabledByDefault: effectiveRecord.enabledByDefault,
+  });
+  if (!activationState.activated) {
+    return false;
+  }
+  return Boolean(
+    resolvePluginSetupServiceRuntime({
+      pluginId: effectiveRecord.id,
+      serviceId: params.serviceId,
+      workspaceDir: params.workspaceDir,
+      env: params.env,
+    }),
   );
 }
 
