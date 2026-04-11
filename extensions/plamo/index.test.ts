@@ -1020,6 +1020,115 @@ describe("plamo provider plugin", () => {
     });
   });
 
+  it("splits interleaved tool-call deltas by index when ids are omitted", async () => {
+    const { provider, catalog } = await loadPlamoCatalog();
+
+    const server = createServer((req, res) => {
+      req.resume();
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.write(
+        `data: ${JSON.stringify({
+          id: "chatcmpl-tool-indexed",
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    function: { name: "read", arguments: '{"path":"README' },
+                  },
+                  {
+                    index: 1,
+                    function: { name: "write", arguments: '{"path":"notes.txt","content":"he' },
+                  },
+                ],
+              },
+            },
+          ],
+        })}\n\n`,
+      );
+      res.write(
+        `data: ${JSON.stringify({
+          id: "chatcmpl-tool-indexed",
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    function: { arguments: '.md"}' },
+                  },
+                  {
+                    index: 1,
+                    function: { arguments: 'llo"}' },
+                  },
+                ],
+                content: "",
+              },
+              finish_reason: "tool_calls",
+            },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+        })}\n\n`,
+      );
+      res.end("data: [DONE]\n\n");
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      server.close();
+      throw new Error("expected tcp server address");
+    }
+
+    const [model] = catalog.provider.models;
+    const wrapped = createWrappedPlamoStream(provider);
+    const stream = await wrapped(
+      {
+        ...model,
+        provider: "plamo",
+        api: "openai-completions",
+        baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      } as never,
+      {
+        systemPrompt: "system prompt",
+        messages: [{ role: "user", content: "こんにちは" }],
+      } as never,
+      {
+        apiKey: "test-key",
+      } as never,
+    );
+
+    let result: Awaited<ReturnType<typeof stream.result>> | undefined;
+    try {
+      for await (const _event of stream) {
+        // Drain the stream so the final message is assembled.
+      }
+      result = await stream.result();
+    } finally {
+      server.close();
+    }
+
+    expect(result).toMatchObject({
+      stopReason: "toolUse",
+      content: [
+        {
+          type: "toolCall",
+          name: "read",
+          arguments: { path: "README.md" },
+        },
+        {
+          type: "toolCall",
+          name: "write",
+          arguments: { path: "notes.txt", content: "hello" },
+        },
+      ],
+    });
+  });
+
   it("defaults to native streaming and normalizes inline PLaMo tool markup into tool calls", async () => {
     const provider = await registerSingleProviderPlugin(plamoPlugin);
     const toolMarkup =
@@ -1313,6 +1422,51 @@ describe("plamo provider plugin", () => {
         {
           type: "toolCall",
           id: "existing_call",
+          name: "write",
+          arguments: { path: "notes.txt", content: "ok" },
+        },
+      ],
+    });
+  });
+
+  it("preserves multiple text blocks around non-text blocks when normalizing inline tool markup", () => {
+    const inlineToolMarkup =
+      "<|plamo:begin_tool_request:plamo|>" +
+      "<|plamo:begin_tool_name:plamo|>write<|plamo:end_tool_name:plamo|>" +
+      '<|plamo:begin_tool_arguments:plamo|><|plamo:msg|>{"path":"notes.txt","content":"ok"}' +
+      "<|plamo:end_tool_arguments:plamo|>" +
+      "<|plamo:end_tool_request:plamo|>";
+
+    const message = {
+      role: "assistant",
+      stopReason: "stop",
+      content: [
+        { type: "text", text: "Before" },
+        {
+          type: "toolCall",
+          id: "existing_call",
+          name: "read",
+          arguments: { path: "README.md" },
+        },
+        { type: "text", text: `After${inlineToolMarkup}` },
+      ],
+    };
+
+    normalizePlamoToolMarkupInMessage(message);
+
+    expect(message).toMatchObject({
+      stopReason: "toolUse",
+      content: [
+        { type: "text", text: "Before" },
+        {
+          type: "toolCall",
+          id: "existing_call",
+          name: "read",
+          arguments: { path: "README.md" },
+        },
+        { type: "text", text: "After" },
+        {
+          type: "toolCall",
           name: "write",
           arguments: { path: "notes.txt", content: "ok" },
         },

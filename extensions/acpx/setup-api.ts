@@ -6,6 +6,10 @@ export default definePluginEntry({
   name: "ACPX Setup",
   description: "Lightweight ACPX setup hooks",
   register(api) {
+    api.registerService({
+      id: "acpx-runtime",
+      async start() {},
+    });
     api.registerAutoEnableProbe(({ config }) => {
       const backendRaw = normalizeLowercaseStringOrEmpty(config.acp?.backend);
       const configured =

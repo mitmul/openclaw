@@ -56,6 +56,7 @@ type ResolvedPlamoCompat = Required<OpenAICompletionsCompat>;
 const PLAMO_PAYLOAD_DUMP_PATH = process.env.OPENCLAW_PLAMO_PAYLOAD_DUMP_PATH?.trim() || "";
 
 type OpenAIStyleToolCall = {
+  index?: unknown;
   id?: unknown;
   type?: unknown;
   function?: {
@@ -611,6 +612,11 @@ type StreamingToolCallBlock = ToolCall & {
   partialArgs: string;
 };
 
+type ActiveToolCallState = {
+  block: StreamingToolCallBlock;
+  contentIndex: number;
+};
+
 function parseSsePayloads(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncIterable<string> {
   const decoder = new TextDecoder();
   return {
@@ -691,6 +697,10 @@ function parseStreamingChunk(raw: string): OpenAIStyleChunk | null {
   }
 }
 
+function resolveToolCallChunkIndex(toolCall: OpenAIStyleToolCall): number | null {
+  return typeof toolCall.index === "number" && Number.isInteger(toolCall.index) ? toolCall.index : null;
+}
+
 function extractStreamingReasoning(delta: OpenAIStyleChunkDelta): string {
   for (const field of ["reasoning_content", "reasoning", "reasoning_text"] as const) {
     const value = delta[field];
@@ -756,8 +766,24 @@ function createNativePlamoStream(
         | { type: "thinking"; thinking: string; thinkingSignature?: string }
         | StreamingToolCallBlock
         | null = null;
+      const activeToolCallStates = new Map<string, ActiveToolCallState>();
       const blocks = output.content;
       const blockIndex = () => blocks.length - 1;
+      const finishOpenToolCallBlocks = () => {
+        const states = [...new Set(activeToolCallStates.values())];
+        activeToolCallStates.clear();
+        for (const state of states) {
+          const finalArgs = parseToolArguments(state.block.partialArgs) ?? {};
+          delete (state.block as { partialArgs?: string }).partialArgs;
+          state.block.arguments = finalArgs;
+          stream.push({
+            type: "toolcall_end",
+            contentIndex: state.contentIndex,
+            toolCall: state.block,
+            partial: output,
+          });
+        }
+      };
       const finishCurrentBlock = () => {
         if (!currentBlock) {
           return;
@@ -826,6 +852,7 @@ function createNativePlamoStream(
 
         const textDelta = typeof delta.content === "string" ? delta.content : "";
         if (textDelta) {
+          finishOpenToolCallBlocks();
           if (!currentBlock || currentBlock.type !== "text") {
             finishCurrentBlock();
             currentBlock = { type: "text", text: "" };
@@ -843,6 +870,7 @@ function createNativePlamoStream(
 
         const reasoningDelta = extractStreamingReasoning(delta);
         if (reasoningDelta) {
+          finishOpenToolCallBlocks();
           if (!currentBlock || currentBlock.type !== "thinking") {
             finishCurrentBlock();
             currentBlock = {
@@ -863,15 +891,17 @@ function createNativePlamoStream(
         }
 
         if (Array.isArray(delta.tool_calls)) {
+          finishCurrentBlock();
           for (const toolCall of delta.tool_calls as OpenAIStyleToolCall[]) {
+            const nextIndex = resolveToolCallChunkIndex(toolCall);
             const nextId = typeof toolCall.id === "string" ? toolCall.id : "";
-            if (
-              !currentBlock ||
-              currentBlock.type !== "toolCall" ||
-              (nextId && currentBlock.id !== nextId)
-            ) {
-              finishCurrentBlock();
-              currentBlock = {
+            const indexKey = nextIndex !== null ? `index:${nextIndex}` : null;
+            const idKey = nextId ? `id:${nextId}` : null;
+            let state =
+              (indexKey ? activeToolCallStates.get(indexKey) : undefined) ??
+              (idKey ? activeToolCallStates.get(idKey) : undefined);
+            if (!state) {
+              const block: StreamingToolCallBlock = {
                 type: "toolCall",
                 id: nextId,
                 name:
@@ -883,26 +913,38 @@ function createNativePlamoStream(
                 arguments: {},
                 partialArgs: "",
               };
-              output.content.push(currentBlock);
-              stream.push({ type: "toolcall_start", contentIndex: blockIndex(), partial: output });
+              output.content.push(block);
+              state = {
+                block,
+                contentIndex: blockIndex(),
+              };
+              stream.push({
+                type: "toolcall_start",
+                contentIndex: state.contentIndex,
+                partial: output,
+              });
             }
-            if (currentBlock.type !== "toolCall") {
-              continue;
+            if (indexKey) {
+              activeToolCallStates.set(indexKey, state);
             }
+            if (idKey) {
+              activeToolCallStates.set(idKey, state);
+            }
+            const currentToolCall = state.block;
             if (nextId) {
-              currentBlock.id = nextId;
+              currentToolCall.id = nextId;
             }
             if (toolCall.function && typeof toolCall.function === "object") {
               if (typeof toolCall.function.name === "string") {
-                currentBlock.name = toolCall.function.name;
+                currentToolCall.name = toolCall.function.name;
               }
               const argsDelta =
                 typeof toolCall.function.arguments === "string" ? toolCall.function.arguments : "";
               if (argsDelta) {
-                currentBlock.partialArgs += argsDelta;
+                currentToolCall.partialArgs += argsDelta;
                 stream.push({
                   type: "toolcall_delta",
-                  contentIndex: blockIndex(),
+                  contentIndex: state.contentIndex,
                   delta: argsDelta,
                   partial: output,
                 });
@@ -929,6 +971,7 @@ function createNativePlamoStream(
         }
       }
 
+      finishOpenToolCallBlocks();
       finishCurrentBlock();
       normalizePlamoToolMarkupInMessage(output);
 
@@ -1026,7 +1069,6 @@ export function normalizePlamoToolMarkupInMessage(message: unknown): void {
     return;
   }
 
-  const cleanedText = stripPlamoToolMarkup(combinedText);
   const existingToolCallCounts = hasToolCallBlock(content)
     ? resolveExistingToolCallSignatureCounts(content)
     : new Map<string, number>();
@@ -1041,16 +1083,12 @@ export function normalizePlamoToolMarkupInMessage(message: unknown): void {
   });
 
   const nextContent: unknown[] = [];
-  let injectedText = false;
   for (const block of content) {
     if (!isTextBlock(block)) {
       nextContent.push(block);
       continue;
     }
-    if (injectedText) {
-      continue;
-    }
-    injectedText = true;
+    const cleanedText = stripPlamoToolMarkup(block.text);
     if (cleanedText) {
       nextContent.push({ ...block, text: cleanedText });
     }
