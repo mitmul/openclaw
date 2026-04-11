@@ -1549,4 +1549,33 @@ describe("plamo provider plugin", () => {
       ],
     });
   });
+
+  it("preserves non-stop terminal reasons when inline tool markup is normalized", () => {
+    const inlineToolMarkup =
+      "<|plamo:begin_tool_request:plamo|>" +
+      "<|plamo:begin_tool_name:plamo|>write<|plamo:end_tool_name:plamo|>" +
+      '<|plamo:begin_tool_arguments:plamo|><|plamo:msg|>{"path":"notes.txt","content":"ok"}' +
+      "<|plamo:end_tool_arguments:plamo|>" +
+      "<|plamo:end_tool_request:plamo|>";
+
+    const message = {
+      role: "assistant",
+      stopReason: "length",
+      content: [{ type: "text", text: `Checking...${inlineToolMarkup}` }],
+    };
+
+    normalizePlamoToolMarkupInMessage(message);
+
+    expect(message).toMatchObject({
+      stopReason: "length",
+      content: [
+        { type: "text", text: "Checking..." },
+        {
+          type: "toolCall",
+          name: "write",
+          arguments: { path: "notes.txt", content: "ok" },
+        },
+      ],
+    });
+  });
 });

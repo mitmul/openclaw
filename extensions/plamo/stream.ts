@@ -1104,7 +1104,10 @@ export function normalizePlamoToolMarkupInMessage(message: unknown): void {
 
   (message as { content: unknown[] }).content = nextContent;
   if (synthesizedToolCalls.length > 0) {
-    (message as { stopReason?: unknown }).stopReason = "toolUse";
+    const stopReason = (message as { stopReason?: unknown }).stopReason;
+    if (stopReason === undefined || stopReason === "stop") {
+      (message as { stopReason?: unknown }).stopReason = "toolUse";
+    }
   }
 }
 
