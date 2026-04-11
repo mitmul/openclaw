@@ -77,6 +77,7 @@ export function resolvePluginSetupCliBackendRuntime(params: { backend: string })
 export function resolvePluginSetupServiceRuntime(params: {
   pluginId: string;
   serviceId: string;
+  rootDir?: string;
   workspaceDir?: string;
   env?: NodeJS.ProcessEnv;
 }): SetupServiceRuntimeEntry | undefined {

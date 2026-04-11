@@ -172,10 +172,16 @@ describe("plamo onboard", () => {
       diagnostics: [],
     }));
     resolvePluginSetupServiceRuntime.mockImplementation(
-      (params?: { workspaceDir?: string; pluginId?: string; serviceId?: string }) =>
+      (params?: {
+        workspaceDir?: string;
+        pluginId?: string;
+        serviceId?: string;
+        rootDir?: string;
+      }) =>
         params?.workspaceDir === "/workspace" &&
         params.pluginId === "acpx" &&
-        params.serviceId === "acpx-runtime"
+        params.serviceId === "acpx-runtime" &&
+        params.rootDir === "/workspace/.openclaw/extensions/acpx"
           ? { pluginId: "acpx", service: { id: "acpx-runtime" } }
           : undefined,
     );
@@ -195,6 +201,47 @@ describe("plamo onboard", () => {
 
     expect(withoutWorkspace.acp?.backend).toBeUndefined();
     expect(withWorkspace.acp?.backend).toBe("acpx");
+  });
+
+  it("does not accept acpx runtime service registrations from a losing duplicate plugin record", () => {
+    loadPluginManifestRegistry.mockReturnValue({
+      plugins: [
+        manifest({
+          id: "acpx",
+          origin: "config",
+          enabledByDefault: true,
+          source: "/overrides/acpx/index.ts",
+          rootDir: "/overrides/acpx",
+        }),
+        manifest({
+          id: "acpx",
+          enabledByDefault: true,
+          source: "/bundled/acpx/index.ts",
+          rootDir: "/bundled/acpx",
+        }),
+      ],
+      diagnostics: [],
+    });
+    resolvePluginSetupServiceRuntime.mockImplementation(
+      (params?: { rootDir?: string; pluginId?: string; serviceId?: string }) =>
+        params?.pluginId === "acpx" &&
+        params.serviceId === "acpx-runtime" &&
+        params.rootDir === "/bundled/acpx"
+          ? { pluginId: "acpx", service: { id: "acpx-runtime" } }
+          : undefined,
+    );
+
+    const cfg = applyPlamoConfig({
+      plugins: {
+        entries: {
+          acpx: {
+            enabled: true,
+          },
+        },
+      },
+    });
+
+    expect(cfg.acp?.backend).toBeUndefined();
   });
 
   it("preserves existing model fallbacks", () => {

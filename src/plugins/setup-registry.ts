@@ -38,6 +38,7 @@ type SetupCliBackendEntry = {
 
 type SetupServiceEntry = {
   pluginId: string;
+  rootDir?: string;
   service: OpenClawPluginService;
 };
 
@@ -347,6 +348,7 @@ export function resolvePluginSetupRegistry(params?: {
           serviceKeys.add(key);
           services.push({
             pluginId: record.id,
+            rootDir: record.rootDir,
             service,
           });
         },
@@ -584,6 +586,7 @@ export function resolvePluginSetupCliBackend(params: {
 export function resolvePluginSetupService(params: {
   pluginId: string;
   serviceId: string;
+  rootDir?: string;
   workspaceDir?: string;
   env?: NodeJS.ProcessEnv;
 }): SetupServiceEntry | undefined {
@@ -597,7 +600,10 @@ export function resolvePluginSetupService(params: {
     env: params.env,
     pluginIds: [normalizedPluginId],
   }).services.find(
-    (entry) => entry.pluginId === normalizedPluginId && entry.service.id === normalizedServiceId,
+    (entry) =>
+      entry.pluginId === normalizedPluginId &&
+      entry.service.id === normalizedServiceId &&
+      (params.rootDir === undefined || entry.rootDir === params.rootDir),
   );
 }
 

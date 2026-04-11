@@ -277,6 +277,7 @@ export function effectivePluginRegistersService(params: {
     resolvePluginSetupServiceRuntime({
       pluginId: effectiveRecord.id,
       serviceId: params.serviceId,
+      rootDir: effectiveRecord.rootDir,
       workspaceDir: params.workspaceDir,
       env: params.env,
     }),
