@@ -5,13 +5,13 @@ import fs from "node:fs";
 import { DEFAULT_PROVIDER } from "../agents/defaults.js";
 import { resolveStaticAllowlistModelKey } from "../agents/model-ref-shared.js";
 import { findNormalizedProviderKey, normalizeProviderId } from "../agents/provider-id.js";
-import type { OpenClawConfig } from "../config/config.js";
 import type { AgentModelEntryConfig } from "../config/types.agent-defaults.js";
 import type {
   ModelApi,
   ModelDefinitionConfig,
   ModelProviderConfig,
 } from "../config/types.models.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
   normalizePluginsConfig,
   resolveEffectivePluginActivationState,

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanupTrackedTempDirs, makeTrackedTempDir } from "./test-helpers/fs-fixtures.js";
 import {
   getRegistryJitiMocks,
@@ -24,9 +24,7 @@ afterEach(() => {
 });
 
 describe("setup-registry getJiti", () => {
-  beforeEach(async () => {
-    resetRegistryJitiMocks();
-    vi.resetModules();
+  beforeAll(async () => {
     ({
       clearPluginSetupRegistryCache,
       resolvePluginSetupRegistry,
@@ -34,6 +32,10 @@ describe("setup-registry getJiti", () => {
       runPluginSetupConfigMigrations,
     } =
       await import("./setup-registry.js"));
+  });
+
+  beforeEach(() => {
+    resetRegistryJitiMocks();
     clearPluginSetupRegistryCache();
   });
 
