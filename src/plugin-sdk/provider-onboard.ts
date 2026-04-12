@@ -12,6 +12,7 @@ import type {
   ModelProviderConfig,
 } from "../config/types.models.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { normalizeWindowsPathForComparison } from "../infra/path-guards.js";
 import {
   normalizePluginsConfig,
   resolveEffectivePluginActivationState,
@@ -70,6 +71,12 @@ function createPathMatcher(): PathMatcher {
   return { exact: new Set<string>(), dirs: [] };
 }
 
+function normalizeMatcherPathForComparison(resolvedPath: string): string {
+  return process.platform === "win32"
+    ? normalizeWindowsPathForComparison(resolvedPath)
+    : resolvedPath;
+}
+
 function addPathToMatcher(
   matcher: PathMatcher,
   rawPath: string,
@@ -83,7 +90,11 @@ function addPathToMatcher(
   if (!resolved) {
     return;
   }
-  if (matcher.exact.has(resolved) || matcher.dirs.includes(resolved)) {
+  const comparisonPath = normalizeMatcherPathForComparison(resolved);
+  if (
+    matcher.exact.has(comparisonPath) ||
+    matcher.dirs.some((dirPath) => normalizeMatcherPathForComparison(dirPath) === comparisonPath)
+  ) {
     return;
   }
   let isDirectory = false;
@@ -96,11 +107,11 @@ function addPathToMatcher(
     matcher.dirs.push(resolved);
     return;
   }
-  matcher.exact.add(resolved);
+  matcher.exact.add(comparisonPath);
 }
 
 function matchesPathMatcher(matcher: PathMatcher, sourcePath: string): boolean {
-  if (matcher.exact.has(sourcePath)) {
+  if (matcher.exact.has(normalizeMatcherPathForComparison(sourcePath))) {
     return true;
   }
   return matcher.dirs.some((dirPath) => isPathInside(dirPath, sourcePath));
