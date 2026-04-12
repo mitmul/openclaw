@@ -302,21 +302,29 @@ function createToolCallSignature(name: string, args: Record<string, unknown>): s
   );
 }
 
+function resolveToolCallBlockSignature(block: unknown): string | null {
+  if (!block || typeof block !== "object") {
+    return null;
+  }
+  const type = (block as { type?: unknown }).type;
+  if (type !== "toolCall" && type !== "toolUse" && type !== "functionCall") {
+    return null;
+  }
+  const name = (block as { name?: unknown }).name;
+  const args = (block as { arguments?: unknown }).arguments;
+  if (typeof name !== "string" || !args || typeof args !== "object" || Array.isArray(args)) {
+    return null;
+  }
+  return createToolCallSignature(name, args as Record<string, unknown>);
+}
+
 function resolveExistingToolCallSignatureCounts(content: unknown[]): Map<string, number> {
   const counts = new Map<string, number>();
   for (const block of content) {
-    if (!block || typeof block !== "object") {
+    const signature = resolveToolCallBlockSignature(block);
+    if (!signature) {
       continue;
     }
-    if ((block as { type?: unknown }).type !== "toolCall") {
-      continue;
-    }
-    const name = (block as { name?: unknown }).name;
-    const args = (block as { arguments?: unknown }).arguments;
-    if (typeof name !== "string" || !args || typeof args !== "object" || Array.isArray(args)) {
-      continue;
-    }
-    const signature = createToolCallSignature(name, args as Record<string, unknown>);
     counts.set(signature, (counts.get(signature) ?? 0) + 1);
   }
   return counts;

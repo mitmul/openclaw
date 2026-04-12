@@ -86,7 +86,7 @@ async function applyApiKeyConfig(params: {
   if (params.applyConfig) {
     next = params.applyConfig(next, {
       workspaceDir: params.ctx.workspaceDir,
-      env: process.env,
+      env: params.ctx.env,
     });
   }
   return params.defaultModel ? applyPrimaryModel(next, params.defaultModel) : next;

@@ -1505,6 +1505,69 @@ describe("plamo provider plugin", () => {
     });
   });
 
+  it("deduplicates inline tool markup against existing toolUse and functionCall blocks", () => {
+    const inlineToolMarkup =
+      "<|plamo:begin_tool_request:plamo|>" +
+      "<|plamo:begin_tool_name:plamo|>write<|plamo:end_tool_name:plamo|>" +
+      '<|plamo:begin_tool_arguments:plamo|><|plamo:msg|>{"path":"notes.txt","content":"ok"}' +
+      "<|plamo:end_tool_arguments:plamo|>" +
+      "<|plamo:end_tool_request:plamo|>";
+
+    const toolUseMessage = {
+      role: "assistant",
+      stopReason: "stop",
+      content: [
+        { type: "text", text: `Checking...${inlineToolMarkup}` },
+        {
+          type: "toolUse",
+          id: "existing_tool_use",
+          name: "write",
+          arguments: { path: "notes.txt", content: "ok" },
+        },
+      ],
+    };
+    normalizePlamoToolMarkupInMessage(toolUseMessage);
+    expect(toolUseMessage).toMatchObject({
+      stopReason: "stop",
+      content: [
+        { type: "text", text: "Checking..." },
+        {
+          type: "toolUse",
+          id: "existing_tool_use",
+          name: "write",
+          arguments: { path: "notes.txt", content: "ok" },
+        },
+      ],
+    });
+
+    const functionCallMessage = {
+      role: "assistant",
+      stopReason: "stop",
+      content: [
+        { type: "text", text: `Checking...${inlineToolMarkup}` },
+        {
+          type: "functionCall",
+          id: "existing_function_call",
+          name: "write",
+          arguments: { path: "notes.txt", content: "ok" },
+        },
+      ],
+    };
+    normalizePlamoToolMarkupInMessage(functionCallMessage);
+    expect(functionCallMessage).toMatchObject({
+      stopReason: "stop",
+      content: [
+        { type: "text", text: "Checking..." },
+        {
+          type: "functionCall",
+          id: "existing_function_call",
+          name: "write",
+          arguments: { path: "notes.txt", content: "ok" },
+        },
+      ],
+    });
+  });
+
   it("preserves multiple text blocks around non-text blocks when normalizing inline tool markup", () => {
     const inlineToolMarkup =
       "<|plamo:begin_tool_request:plamo|>" +
