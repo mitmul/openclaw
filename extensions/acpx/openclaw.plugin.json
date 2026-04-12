@@ -3,6 +3,9 @@
   "enabledByDefault": true,
   "name": "ACPX Runtime",
   "description": "Embedded ACP runtime backend with plugin-owned session and transport management.",
+  "setup": {
+    "services": ["acpx-runtime"]
+  },
   "skills": ["./skills"],
   "configSchema": {
     "type": "object",

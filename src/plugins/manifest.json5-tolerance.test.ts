@@ -119,6 +119,7 @@ describe("loadPluginManifest JSON5 tolerance", () => {
       { id: "", authMethods: ["oauth"] }
     ],
     cliBackends: ["openai-cli", ""],
+    services: ["openai-runtime", ""],
     configMigrations: ["legacy-openai-auth", ""],
     requiresRuntime: false
   },
@@ -144,6 +145,7 @@ describe("loadPluginManifest JSON5 tolerance", () => {
           },
         ],
         cliBackends: ["openai-cli"],
+        services: ["openai-runtime"],
         configMigrations: ["legacy-openai-auth"],
         requiresRuntime: false,
       });

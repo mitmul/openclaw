@@ -9,3 +9,7 @@ export function listSetupProviderIds(record: SetupDescriptorRecord): readonly st
 export function listSetupCliBackendIds(record: SetupDescriptorRecord): readonly string[] {
   return record.setup?.cliBackends ?? record.cliBackends;
 }
+
+export function listSetupServiceIds(record: SetupDescriptorRecord): readonly string[] {
+  return record.setup?.services ?? [];
+}

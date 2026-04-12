@@ -71,6 +71,8 @@ export type PluginManifestSetup = {
   providers?: PluginManifestSetupProvider[];
   /** Setup-time backend ids available without full runtime activation. */
   cliBackends?: string[];
+  /** Plugin-owned setup service ids available without full runtime activation. */
+  services?: string[];
   /** Config migration ids owned by this plugin's setup surface. */
   configMigrations?: string[];
   /**
@@ -472,12 +474,14 @@ function normalizeManifestSetup(value: unknown): PluginManifestSetup | undefined
   }
   const providers = normalizeManifestSetupProviders(value.providers);
   const cliBackends = normalizeTrimmedStringList(value.cliBackends);
+  const services = normalizeTrimmedStringList(value.services);
   const configMigrations = normalizeTrimmedStringList(value.configMigrations);
   const requiresRuntime =
     typeof value.requiresRuntime === "boolean" ? value.requiresRuntime : undefined;
   const setup = {
     ...(providers ? { providers } : {}),
     ...(cliBackends.length > 0 ? { cliBackends } : {}),
+    ...(services.length > 0 ? { services } : {}),
     ...(configMigrations.length > 0 ? { configMigrations } : {}),
     ...(requiresRuntime !== undefined ? { requiresRuntime } : {}),
   } satisfies PluginManifestSetup;

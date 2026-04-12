@@ -444,6 +444,7 @@ describe("loadPluginManifestRegistry", () => {
           },
         ],
         cliBackends: ["openai-cli"],
+        services: ["openai-runtime"],
         configMigrations: ["legacy-openai-auth"],
         requiresRuntime: false,
       },
@@ -472,6 +473,7 @@ describe("loadPluginManifestRegistry", () => {
         },
       ],
       cliBackends: ["openai-cli"],
+      services: ["openai-runtime"],
       configMigrations: ["legacy-openai-auth"],
       requiresRuntime: false,
     });

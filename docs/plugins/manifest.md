@@ -258,6 +258,7 @@ before runtime loads.
       }
     ],
     "cliBackends": ["openai-cli"],
+    "services": ["openai-runtime"],
     "configMigrations": ["legacy-openai-auth"],
     "requiresRuntime": false
   }
@@ -269,15 +270,18 @@ backends. `setup.cliBackends` is the setup-specific descriptor surface for
 control-plane/setup flows that should stay metadata-only.
 
 When present, `setup.providers` and `setup.cliBackends` are the preferred
-descriptor-first lookup surface for setup discovery. If the descriptor only
+descriptor-first lookup surface for setup discovery. `setup.services` lets
+setup-time callers confirm plugin-owned service ids without loading the full
+setup runtime once the owning plugin is already known. If the descriptor only
 narrows the candidate plugin and setup still needs richer setup-time runtime
 hooks, set `requiresRuntime: true` and keep `setup-api` in place as the
 fallback execution path.
 
 Because setup lookup can execute plugin-owned `setup-api` code, normalized
 `setup.providers[].id` and `setup.cliBackends[]` values must stay unique across
-discovered plugins. Ambiguous ownership fails closed instead of picking a
-winner from discovery order.
+discovered plugins. Service ids stay plugin-scoped because callers resolve them
+after plugin ownership is already known. Ambiguous provider or CLI backend
+ownership fails closed instead of picking a winner from discovery order.
 
 ### setup.providers reference
 
@@ -289,12 +293,13 @@ winner from discovery order.
 
 ### setup fields
 
-| Field              | Required | Type       | What it means                                                                                       |
-| ------------------ | -------- | ---------- | --------------------------------------------------------------------------------------------------- |
-| `providers`        | No       | `object[]` | Provider setup descriptors exposed during setup and onboarding.                                     |
-| `cliBackends`      | No       | `string[]` | Setup-time backend ids used for descriptor-first setup lookup. Keep normalized ids globally unique. |
-| `configMigrations` | No       | `string[]` | Config migration ids owned by this plugin's setup surface.                                          |
-| `requiresRuntime`  | No       | `boolean`  | Whether setup still needs `setup-api` execution after descriptor lookup.                            |
+| Field              | Required | Type       | What it means                                                                                        |
+| ------------------ | -------- | ---------- | ---------------------------------------------------------------------------------------------------- |
+| `providers`        | No       | `object[]` | Provider setup descriptors exposed during setup and onboarding.                                      |
+| `cliBackends`      | No       | `string[]` | Setup-time backend ids used for descriptor-first setup lookup. Keep normalized ids globally unique.  |
+| `services`         | No       | `string[]` | Plugin-owned setup service ids used for runtime-free service checks after plugin ownership is known. |
+| `configMigrations` | No       | `string[]` | Config migration ids owned by this plugin's setup surface.                                           |
+| `requiresRuntime`  | No       | `boolean`  | Whether setup still needs `setup-api` execution after descriptor lookup.                             |
 
 ## uiHints reference
 

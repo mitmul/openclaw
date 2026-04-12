@@ -96,4 +96,33 @@ describe("provider-onboard explicit install matching", () => {
       true,
     );
   });
+
+  it("uses bundled setup service descriptors when the setup runtime module is unavailable", () => {
+    loadPluginManifestRegistryMock.mockReturnValue({
+      diagnostics: [],
+      plugins: [
+        {
+          id: "acpx",
+          origin: "bundled",
+          rootDir: "/tmp/Bundled/acpx",
+          source: "/tmp/Bundled/acpx/index.js",
+          manifestPath: "/tmp/Bundled/acpx/openclaw.plugin.json",
+          channels: [],
+          providers: [],
+          cliBackends: [],
+          skills: [],
+          hooks: [],
+          enabledByDefault: true,
+          setup: {
+            services: ["acpx-runtime"],
+          },
+        },
+      ] satisfies PluginManifestRecord[],
+    });
+    setupRegistryRuntimeTesting.setRuntimeModuleForTest(null);
+
+    expect(
+      effectivePluginRegistersService({ cfg: {}, pluginId: "acpx", serviceId: "acpx-runtime" }),
+    ).toBe(true);
+  });
 });
