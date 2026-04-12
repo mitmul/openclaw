@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import { normalizeProviderId } from "../agents/provider-id.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { loadPluginManifestRegistry } from "./manifest-registry.js";
 
 type SetupRegistryRuntimeModule = Pick<
@@ -88,6 +89,7 @@ export function resolvePluginSetupServiceRuntime(params: {
   pluginId: string;
   serviceId: string;
   rootDir?: string;
+  config?: OpenClawConfig;
   workspaceDir?: string;
   env?: NodeJS.ProcessEnv;
 }): SetupServiceRuntimeEntry | undefined {

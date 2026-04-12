@@ -5,6 +5,7 @@ import { normalizeProviderId } from "../agents/provider-id.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { CliBackendPlugin } from "./cli-backend.types.js";
 import { collectPluginConfigContractMatches } from "./config-contracts.js";
+import { normalizePluginsConfig } from "./config-state.js";
 import { discoverOpenClawPlugins } from "./discovery.js";
 import { getCachedPluginJitiLoader, type PluginJitiLoaderCache } from "./jiti-loader-cache.js";
 import { loadPluginManifestRegistry } from "./manifest-registry.js";
@@ -90,11 +91,14 @@ function getJiti(modulePath: string) {
 }
 
 function buildSetupRegistryCacheKey(params: {
+  config?: OpenClawConfig;
   workspaceDir?: string;
   env?: NodeJS.ProcessEnv;
   pluginIds?: readonly string[];
 }): string {
+  const normalizedPlugins = normalizePluginsConfig(params.config?.plugins);
   const { roots, loadPaths } = resolvePluginCacheInputs({
+    loadPaths: normalizedPlugins.loadPaths,
     workspaceDir: params.workspaceDir,
     env: params.env,
   });
@@ -107,6 +111,7 @@ function buildSetupRegistryCacheKey(params: {
 
 function buildSetupProviderCacheKey(params: {
   provider: string;
+  config?: OpenClawConfig;
   workspaceDir?: string;
   env?: NodeJS.ProcessEnv;
 }): string {
@@ -173,6 +178,7 @@ function resolveRelevantSetupMigrationPluginIds(params: {
 }): string[] {
   const ids = new Set<string>(collectConfiguredPluginEntryIds(params.config));
   const registry = loadPluginManifestRegistry({
+    config: params.config,
     workspaceDir: params.workspaceDir,
     env: params.env,
     cache: true,
@@ -294,12 +300,15 @@ function createSetupOnlyPluginApi(params: {
 }
 
 export function resolvePluginSetupRegistry(params?: {
+  config?: OpenClawConfig;
   workspaceDir?: string;
   env?: NodeJS.ProcessEnv;
   pluginIds?: readonly string[];
 }): PluginSetupRegistry {
   const env = params?.env ?? process.env;
+  const normalizedPlugins = normalizePluginsConfig(params?.config?.plugins);
   const cacheKey = buildSetupRegistryCacheKey({
+    config: params?.config,
     workspaceDir: params?.workspaceDir,
     env,
     pluginIds: params?.pluginIds,
@@ -334,11 +343,13 @@ export function resolvePluginSetupRegistry(params?: {
   const serviceKeys = new Set<string>();
 
   const discovery = discoverOpenClawPlugins({
+    extraPaths: normalizedPlugins.loadPaths,
     workspaceDir: params?.workspaceDir,
     env,
     cache: true,
   });
   const manifestRegistry = loadPluginManifestRegistry({
+    config: params?.config,
     workspaceDir: params?.workspaceDir,
     env,
     cache: true,
@@ -452,6 +463,7 @@ export function resolvePluginSetupRegistry(params?: {
 
 export function resolvePluginSetupProvider(params: {
   provider: string;
+  config?: OpenClawConfig;
   workspaceDir?: string;
   env?: NodeJS.ProcessEnv;
 }): SetupProviderPlugin | undefined {
@@ -462,12 +474,15 @@ export function resolvePluginSetupProvider(params: {
 
   const env = params.env ?? process.env;
   const normalizedProvider = normalizeProviderId(params.provider);
+  const normalizedPlugins = normalizePluginsConfig(params.config?.plugins);
   const discovery = discoverOpenClawPlugins({
+    extraPaths: normalizedPlugins.loadPaths,
     workspaceDir: params.workspaceDir,
     env,
     cache: true,
   });
   const manifestRegistry = loadPluginManifestRegistry({
+    config: params.config,
     workspaceDir: params.workspaceDir,
     env,
     cache: true,
@@ -543,6 +558,7 @@ export function resolvePluginSetupProvider(params: {
 
 export function resolvePluginSetupCliBackend(params: {
   backend: string;
+  config?: OpenClawConfig;
   workspaceDir?: string;
   env?: NodeJS.ProcessEnv;
 }): SetupCliBackendEntry | undefined {
@@ -555,12 +571,15 @@ export function resolvePluginSetupCliBackend(params: {
   }
 
   const env = params.env ?? process.env;
+  const normalizedPlugins = normalizePluginsConfig(params.config?.plugins);
   const discovery = discoverOpenClawPlugins({
+    extraPaths: normalizedPlugins.loadPaths,
     workspaceDir: params.workspaceDir,
     env,
     cache: true,
   });
   const manifestRegistry = loadPluginManifestRegistry({
+    config: params.config,
     workspaceDir: params.workspaceDir,
     env,
     cache: true,
@@ -630,6 +649,7 @@ export function resolvePluginSetupService(params: {
   pluginId: string;
   serviceId: string;
   rootDir?: string;
+  config?: OpenClawConfig;
   workspaceDir?: string;
   env?: NodeJS.ProcessEnv;
 }): SetupServiceEntry | undefined {
@@ -639,6 +659,7 @@ export function resolvePluginSetupService(params: {
     return undefined;
   }
   return resolvePluginSetupRegistry({
+    config: params.config,
     workspaceDir: params.workspaceDir,
     env: params.env,
     pluginIds: [normalizedPluginId],
@@ -666,6 +687,7 @@ export function runPluginSetupConfigMigrations(params: {
   }
 
   for (const entry of resolvePluginSetupRegistry({
+    config: params.config,
     workspaceDir: params.workspaceDir,
     env: params.env,
     pluginIds,
@@ -691,6 +713,7 @@ export function resolvePluginSetupAutoEnableReasons(params: {
   const seen = new Set<string>();
 
   for (const entry of resolvePluginSetupRegistry({
+    config: params.config,
     workspaceDir: params.workspaceDir,
     env,
   }).autoEnableProbes) {

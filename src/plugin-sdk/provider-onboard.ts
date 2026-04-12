@@ -278,6 +278,7 @@ export function effectivePluginRegistersService(params: {
       pluginId: effectiveRecord.id,
       serviceId: params.serviceId,
       rootDir: effectiveRecord.rootDir,
+      config: params.cfg,
       workspaceDir: params.workspaceDir,
       env: params.env,
     }),

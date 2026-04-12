@@ -203,6 +203,57 @@ describe("plamo onboard", () => {
     expect(withWorkspace.acp?.backend).toBe("acpx");
   });
 
+  it("passes config context through the setup-service capability lookup", () => {
+    const cfg = {
+      plugins: {
+        entries: {
+          acpx: {
+            enabled: true,
+            path: "/custom/acpx",
+          },
+        },
+      },
+    };
+    loadPluginManifestRegistry.mockReturnValue({
+      plugins: [
+        manifest({
+          id: "acpx",
+          origin: "config",
+          enabledByDefault: true,
+          source: "/custom/acpx/index.ts",
+          rootDir: "/custom/acpx",
+        }),
+      ],
+      diagnostics: [],
+    });
+    resolvePluginSetupServiceRuntime.mockImplementation(
+      (params?: {
+        config?: {
+          plugins?: {
+            entries?: {
+              acpx?: {
+                path?: string;
+              };
+            };
+          };
+        };
+        pluginId?: string;
+        serviceId?: string;
+        rootDir?: string;
+      }) =>
+        params?.config?.plugins?.entries?.acpx?.path === "/custom/acpx" &&
+        params.pluginId === "acpx" &&
+        params.serviceId === "acpx-runtime" &&
+        params.rootDir === "/custom/acpx"
+          ? { pluginId: "acpx", service: { id: "acpx-runtime" } }
+          : undefined,
+    );
+
+    const next = applyPlamoConfig(cfg);
+
+    expect(next.acp?.backend).toBe("acpx");
+  });
+
   it("does not accept acpx runtime service registrations from a losing duplicate plugin record", () => {
     loadPluginManifestRegistry.mockReturnValue({
       plugins: [
