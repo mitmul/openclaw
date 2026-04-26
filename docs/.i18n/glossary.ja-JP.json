@@ -60,6 +60,18 @@
     "target": "Pi"
   },
   {
+    "source": "PLaMo",
+    "target": "PLaMo"
+  },
+  {
+    "source": "Preferred Networks",
+    "target": "Preferred Networks"
+  },
+  {
+    "source": "Preferred Networks (PLaMo)",
+    "target": "Preferred Networks（PLaMo）"
+  },
+  {
     "source": "Plugin",
     "target": "Plugin"
   },

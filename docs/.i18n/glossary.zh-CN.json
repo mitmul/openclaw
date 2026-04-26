@@ -188,6 +188,10 @@
     "target": "功能"
   },
   {
+    "source": "Image & media support",
+    "target": "图像与媒体支持"
+  },
+  {
     "source": "DMs",
     "target": "私信"
   },
@@ -250,6 +254,10 @@
   {
     "source": "Network model",
     "target": "网络模型"
+  },
+  {
+    "source": "Remote access",
+    "target": "远程访问"
   },
   {
     "source": "Bridge protocol (legacy nodes, historical)",
